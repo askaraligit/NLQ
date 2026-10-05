@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--primary);
+  --color-sidebar-primary-foreground: var(--primary-foreground);
+  --color-sidebar-accent: var(--accent);
+  --color-sidebar-accent-foreground: var(--accent-foreground);
+  --color-sidebar-border: var(--border);
+  --color-sidebar-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: "Segoe UI", Arial, Helvetica, sans-serif;
+  --font-mono: "Cascadia Code", "Consolas", monospace;
+}
+
+:root {
+  color-scheme: light;
+  --radius: 0.625rem;
+  --background: #fcfcf9;
+  --foreground: #1b3430;
+  --card: #ffffff;
+  --card-foreground: #1b3430;
+  --popover: #ffffff;
+  --popover-foreground: #1b3430;
+  --primary: #176659;
+  --primary-foreground: #ffffff;
+  --secondary: #f0f3ee;
+  --secondary-foreground: #52625b;
+  --muted: #f3f5f0;
+  --muted-foreground: #62716a;
+  --accent: #e6eee7;
+  --accent-foreground: #20594e;
+  --destructive: #bb3636;
+  --border: #e1e6de;
+  --input: #d8dfd5;
+  --ring: #176659;
+  --sidebar: #f4f6f0;
+  --sidebar-foreground: #374e45;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+  }
+
+  ::selection {
+    @apply bg-primary/15 text-foreground;
+  }
+}
+
+@layer utilities {
+  .workspace-grid {
+    background-image: radial-gradient(#17665920 1px, transparent 1px);
+    background-size: 16px 16px;
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "nlq",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": ["apps/web"],
+  "engines": {
+    "node": ">=24 <25",
+    "npm": ">=11 <12"
+  },
+  "packageManager": "npm@11.19.0",
+  "scripts": {
+    "dev:web": "npm run dev --workspace @nlq/web",
+    "lint": "npm run lint --workspace @nlq/web",
+    "typecheck": "npm run typecheck --workspace @nlq/web",
+    "build": "npm run build --workspace @nlq/web"
+  }
+}
