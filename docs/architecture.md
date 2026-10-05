@@ -5,7 +5,8 @@
 The monorepo has independently runnable frontend and backend applications. npm workspaces
 manage the frontend; uv manages Python. Docker Compose provides development processes and one
 PostgreSQL instance. The browser reaches FastAPI through a configured public API URL, and CORS
-uses explicit origins. PostgreSQL is provisioned but unused by the application at this milestone.
+uses explicit origins. Phase 2 adds the database schema and maintenance commands. Phase 3 adds
+isolated runtime database engines and health endpoints.
 
 ```mermaid
 flowchart LR
@@ -23,9 +24,42 @@ Phase 1 includes:
 - Explicit dependency locks, environment templates, and local secret generation.
 - Development Dockerfiles, reload mounts, startup checks, and a persistent PostgreSQL volume.
 
-Database schemas, credentials for application roles, Alembic, SQLAlchemy integration, business
-routes, authentication, providers, charts, query history, saved queries, and Redis are intentionally
-introduced in their corresponding phases. Empty service implementations are not scaffolding.
+## Phase 2 implementation
+
+SQLAlchemy metadata and an immutable Alembic revision define 12 ERP tables and three application
+metadata tables. Separate administrator, migrator, application, and reader credentials keep
+maintenance operations outside the running API. Explicit Compose task profiles run configuration,
+role provisioning, migration, and sample-data loading.
+
+All ERP relationships include tenant identity. Reader RLS resolves a tenant through a protected
+database-login mapping using `session_user`. Changing a custom session setting cannot change the
+tenant. The initial reader login belongs to one tenant; future multi-tenant query connections
+must preserve this login-to-tenant boundary rather than reuse a single global reader login.
+
+Deterministic seeds create two synthetic tenants, exact decimal monetary values, historical
+orders, invoices, payments, and inventory snapshots. Seed markers and an advisory transaction
+lock make loading atomic and repeatable. See [database design and operations](database.md).
+
+Business routes, authentication, providers, charts, query history, saved queries, and Redis are
+introduced in subsequent phases.
+
+## Phase 3 implementation
+
+FastAPI creates two independent SQLAlchemy engine pools during its lifespan: `DATABASE_URL` must
+authenticate as `nlq_app`; `ANALYTICS_DATABASE_URL` must authenticate as `nlq_reader`. Neither
+accepts migration or bootstrap identities. Application and analytics session dependencies are
+provided for later repositories/services, but no business route can access data yet.
+
+`GET /api/v1/health/live` checks only API process liveness. `GET /api/v1/health/ready` tests each
+runtime identity and verifies that the analytics role defaults to a read-only transaction. It
+returns only `ok`, `unconfigured`, or `unavailable` status for each path—never connection strings,
+credentials, or database exceptions. Liveness remains available if runtime URLs are absent or
+malformed so operational diagnosis does not depend on database availability.
+
+In Docker Compose, URL credentials remain in `apps/api/.env`, while container-only host/port
+overrides route both runtime pools to the `postgres` service. The API never receives bootstrap or
+migration credentials. The Compose health check uses liveness, leaving readiness meaningful for
+deployments that require the database.
 
 ## Target request flow
 
@@ -54,8 +88,8 @@ capability or authority to choose a user's permissions.
 
 ## Persistence boundary
 
-Use one PostgreSQL database initially with separate `app` and `erp` schemas. Phase 2 creates
-explicit roles and grants; Phase 3 adds separate SQLAlchemy engines. The existing Compose
+Use one PostgreSQL database initially with separate `app` and `erp` schemas. Phase 2 implements
+explicit roles and grants; Phase 3 adds separate SQLAlchemy runtime engines. The existing Compose
 `POSTGRES_USER` is a bootstrap administrator and must never become an API connection identity.
 
 | Identity | Intended access |
@@ -64,7 +98,7 @@ explicit roles and grants; Phase 3 adds separate SQLAlchemy engines. The existin
 | `nlq_reader` | SELECT on approved ERP relations; no application records |
 | `nlq_migrator` | Controlled migrations; unavailable to API runtime |
 
-`DATABASE_URL` and `ANALYTICS_DATABASE_URL` remain distinct settings. A future migration
+`DATABASE_URL` and `ANALYTICS_DATABASE_URL` remain distinct settings. The migration
 environment holds `MIGRATION_DATABASE_URL` separately. The API's environment does not contain
 bootstrap or migration credentials. Schema ownership, tenant scope, grants, and indexes are
 designed with Phase 2 rather than retrofitted after query execution exists.
@@ -85,9 +119,11 @@ Tenant isolation and history/saved-query ownership are enforced by the backend, 
 
 ## Development container design
 
-PostgreSQL, API, and frontend readiness are checked independently. The API's Phase 1 probe checks
-`/openapi.json`; this is a process readiness check, not database readiness. Compose waits for
-PostgreSQL before starting the API, then for API startup before the frontend.
+PostgreSQL, API, and frontend readiness are checked independently. The API liveness probe checks
+`/api/v1/health/live`; it proves the process is available without making deployment health depend
+on database configuration. `/api/v1/health/ready` separately tests both restricted database
+identities. Compose waits for PostgreSQL before starting the API, then for API liveness before the
+frontend.
 
 The PostgreSQL 18 image stores data beneath `/var/lib/postgresql/18/docker`, so its persistent
 volume is mounted at `/var/lib/postgresql`. API dependencies live in `/opt/venv`; host source

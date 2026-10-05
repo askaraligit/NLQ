@@ -27,7 +27,24 @@ async def test_application_bootstraps_without_database_or_provider(
         schema = await client.get("/openapi.json")
         assert schema.status_code == 200
         assert schema.json()["info"]["title"] == "NLQ API"
-        assert schema.json()["paths"] == {}
+        assert set(schema.json()["paths"]) == {"/api/v1/health/live", "/api/v1/health/ready"}
+
+
+async def test_liveness_does_not_depend_on_database_configuration(
+    app_factory: Callable[[Settings], FastAPI],
+) -> None:
+    application = app_factory(Settings(_env_file=None))
+    async with application.router.lifespan_context(application):
+        transport = httpx.ASGITransport(app=application)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            assert (await client.get("/api/v1/health/live")).json() == {"status": "ok"}
+            readiness = await client.get("/api/v1/health/ready")
+
+    assert readiness.status_code == 503
+    assert readiness.json() == {
+        "status": "unavailable",
+        "checks": {"application_database": "unconfigured", "analytics_database": "unconfigured"},
+    }
 
 
 async def test_cors_allows_only_configured_frontend_origins(

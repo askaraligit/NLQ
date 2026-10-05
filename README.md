@@ -2,9 +2,9 @@
 
 A natural-language analytics workspace built with Next.js, FastAPI, and PostgreSQL.
 
-**Current milestone: Phase 1 — project foundation.** The frontend shell, backend bootstrap,
-validated environment settings, dependency locks, and local Docker configuration are implemented.
-ERP tables, database access, SQL generation, authentication, and analytics are later milestones.
+**Current milestone: Phase 3 — backend connectivity.** FastAPI now owns separate, pooled
+application and analytics database paths, with liveness and readiness endpoints. SQL generation,
+authentication, and analytics results follow in later phases.
 
 ## Run with Docker
 
@@ -15,13 +15,21 @@ In PowerShell:
 
 ```powershell
 .\scripts\setup.ps1
-docker compose config --quiet
+docker compose --profile database run --build --rm db-configure
+docker compose --profile database run --build --rm db-bootstrap
+docker compose --profile database run --build --rm migrate
+docker compose --profile database run --build --rm seed
 docker compose up --build -d --wait
 ```
 
 The setup script creates `.env`, `apps/web/.env.local`, and `apps/api/.env` from their templates,
 generates a cryptographically random local PostgreSQL password, and preserves existing files.
-It never prints the password. If local PowerShell script execution is restricted, run it for this
+It never prints the password. `db-configure` adds separate application, reader, and migration
+credentials only where settings are missing. `db-bootstrap` provisions roles/schemas, `migrate`
+applies versioned DDL, and `seed` loads synthetic development data. Database tasks are explicit
+one-off commands; starting the API does not run migrations or seeds.
+
+If local PowerShell script execution is restricted, run the setup script for this
 process with `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup.ps1`.
 
 On other operating systems, copy the three templates to those same destinations and set a random
@@ -32,12 +40,15 @@ On other operating systems, copy the three templates to those same destinations 
 | Frontend | http://localhost:3000 |
 | API documentation | http://localhost:8000/docs |
 | OpenAPI document | http://localhost:8000/openapi.json |
+| API liveness | http://localhost:8000/api/v1/health/live |
+| API readiness | http://localhost:8000/api/v1/health/ready |
 | PostgreSQL | `127.0.0.1:5432` |
 
 All published ports bind to the local machine. The root PostgreSQL credentials are used for
-database provisioning only; they are not injected into the API or frontend. The API does not
-connect to the database during Phase 1. Its Compose readiness probe uses the OpenAPI document;
-the application health endpoint will arrive in Phase 3.
+database provisioning only; they are not injected into the API or frontend. The API creates
+separate database engine pools when both restricted URLs are configured. Its Compose health
+probe uses the liveness endpoint; readiness checks the database identities without exposing
+connection details.
 
 ```powershell
 docker compose ps
@@ -59,7 +70,8 @@ Version managers may supply these without changing your system defaults. Python 
 within 3.12 are supported; the container uses 3.12.15.
 
 Initialize configuration with `scripts/setup.ps1` first. Host application development does not
-require PostgreSQL until database integration is added. To run PostgreSQL alone when needed:
+require PostgreSQL until database integration is added. To provision the Phase 2 database,
+start PostgreSQL through Compose or provide a local PostgreSQL 18 installation:
 
 ```powershell
 docker compose up -d postgres
@@ -79,6 +91,22 @@ Set-Location apps/api
 uv sync --frozen
 uv run --frozen uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
+
+Database setup from `apps/api`, with PostgreSQL already running and the root `.env` matching
+its administrator login:
+
+```powershell
+uv run --frozen python -m app.db.configure
+uv run --frozen python -m app.db.bootstrap
+uv run --frozen alembic upgrade head
+uv run --frozen python -m seeds
+uv run --frozen alembic check
+```
+
+The sample dataset is fixed as of **2026-09-30**. The main tenant has 600 sales orders,
+300 purchase orders, 80 products, 60 customers, and 20 suppliers. A smaller second tenant
+supports isolation tests. Repeating the seed command skips completed versions without replacing
+records. See [database setup, schema, and data semantics](docs/database.md).
 
 Run one workflow at a time on the default ports. To change published Docker ports, edit the root
 `.env`; update `NEXT_PUBLIC_API_URL` in `apps/web/.env.local` and `CORS_ORIGINS` in `apps/api/.env`
@@ -102,6 +130,12 @@ uv run --frozen ruff check .
 uv run --frozen ruff format --check .
 uv run --frozen pytest
 ```
+
+PostgreSQL integration tests skip unless explicit `TEST_DATABASE_URL`,
+`TEST_READER_DATABASE_URL`, and `TEST_APP_DATABASE_URL` values point to the same migrated,
+seeded database named `nlq_test*`. These must use their respective restricted identities;
+runtime and migration configuration are never reused implicitly. Additional provisioning
+tests use optional `TEST_ADMIN_DATABASE_URL`. See the database guide for the test workflow.
 
 With the Docker stack running, the equivalent checks are:
 
@@ -130,6 +164,7 @@ ESLint 9 is retained for the current Next.js lint plugins' declared peer compati
 | `.env` | Compose ports and PostgreSQL provisioning credentials |
 | `apps/web/.env.local` | Public browser API URL |
 | `apps/api/.env` | Backend settings and future provider/runtime credentials |
+| `apps/api/migrations/.env` | Migration/seed identity only; excluded from the API environment |
 
 Only `.env.example` templates are committed. `NEXT_PUBLIC_*` values are public and baked into
 frontend builds. Backend environment loading is anchored to `apps/api`, independent of the
@@ -140,13 +175,15 @@ The default future query limits are 10 seconds, 1,000 returned rows, 100 rows pe
 
 The Dockerfiles and Compose file are for local development. Production deployment hardening
 belongs to Phase 8. No production-readiness or tenant-isolation guarantees are implied by the
-Phase 1 scaffold.
+application foundation.
 
 ## Layout and next milestones
 
 ```text
 apps/web/          Next.js application and UI primitives
-apps/api/          FastAPI application, settings, and bootstrap tests
+apps/api/          FastAPI application, SQLAlchemy models, database commands, and tests
+apps/api/migrations/  Versioned Alembic schema changes
+apps/api/seeds/     Deterministic synthetic ERP dataset
 scripts/          Local environment setup
 docs/             Architecture and phase boundaries
 compose.yaml      Development services and persistent PostgreSQL volume
@@ -154,6 +191,5 @@ compose.yaml      Development services and persistent PostgreSQL volume
 
 See [architecture and implementation boundaries](docs/architecture.md).
 
-Phase 2 adds the ERP schema, separate database roles, Alembic migrations, indexes, and realistic
-seed data. Phase 3 adds database integration and health endpoints. Phase 4 introduces the
-provider abstraction and secured NLQ pipeline. Each later phase requires its own agreed scope.
+Phase 4 introduces the provider abstraction and secured NLQ pipeline. Each later phase requires
+its own agreed scope.

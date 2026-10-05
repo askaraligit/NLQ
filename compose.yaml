@@ -1,6 +1,57 @@
 name: nlq
 
+x-database-task: &database-task
+  profiles: [database]
+  build:
+    context: .
+    dockerfile: apps/api/Dockerfile
+    target: development
+  init: true
+  depends_on:
+    postgres:
+      condition: service_healthy
+
 services:
+  db-configure:
+    <<: *database-task
+    depends_on: []
+    volumes:
+      - .:/workspace
+    command: ["python", "-m", "app.db.configure", "--root", "/workspace"]
+
+  db-bootstrap:
+    <<: *database-task
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-nlq}
+      POSTGRES_USER: ${POSTGRES_USER:-nlq_bootstrap}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      NLQ_APP_PASSWORD: ${NLQ_APP_PASSWORD:-}
+      NLQ_READER_PASSWORD: ${NLQ_READER_PASSWORD:-}
+      NLQ_MIGRATOR_PASSWORD: ${NLQ_MIGRATOR_PASSWORD:-}
+    command: ["python", "-m", "app.db.bootstrap"]
+
+  migrate:
+    <<: *database-task
+    env_file:
+      - path: apps/api/migrations/.env
+        required: false
+    environment:
+      MIGRATION_DATABASE_HOST: postgres
+      MIGRATION_DATABASE_PORT: "5432"
+    command: ["uv", "run", "--frozen", "alembic", "upgrade", "head"]
+
+  seed:
+    <<: *database-task
+    env_file:
+      - path: apps/api/migrations/.env
+        required: false
+    environment:
+      MIGRATION_DATABASE_HOST: postgres
+      MIGRATION_DATABASE_PORT: "5432"
+    command: ["uv", "run", "--frozen", "python", "-m", "seeds"]
+
   postgres:
     image: postgres:18.6-bookworm@sha256:3725f4e2499eef5134592b3b4ab79a543ed7f8e533b05b5b637af926630f6650
     environment:
@@ -32,6 +83,10 @@ services:
     environment:
       APP_ENV: development
       WATCHFILES_FORCE_POLLING: "true"
+      DATABASE_HOST: postgres
+      DATABASE_PORT: "5432"
+      ANALYTICS_DATABASE_HOST: postgres
+      ANALYTICS_DATABASE_PORT: "5432"
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8000"
     volumes:
@@ -41,7 +96,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/openapi.json', timeout=2)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/live', timeout=2)"]
       interval: 10s
       timeout: 3s
       retries: 5

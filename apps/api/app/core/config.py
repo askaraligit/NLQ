@@ -1,4 +1,4 @@
-"""Validated runtime configuration; external capabilities are inactive in Phase 1."""
+"""Validated runtime configuration for the API process."""
 
 from functools import lru_cache
 from pathlib import Path
@@ -36,6 +36,13 @@ class Settings(BaseSettings):
     # Optional until their capabilities are implemented. SecretStr redacts repr/JSON output.
     database_url: SecretStr | None = None
     analytics_database_url: SecretStr | None = None
+    database_host: str | None = None
+    database_port: int | None = Field(default=None, ge=1, le=65535)
+    analytics_database_host: str | None = None
+    analytics_database_port: int | None = Field(default=None, ge=1, le=65535)
+    database_pool_size: int = Field(default=5, ge=1, le=20)
+    database_max_overflow: int = Field(default=5, ge=0, le=20)
+    database_pool_timeout_seconds: int = Field(default=5, ge=1, le=30)
     llm_provider: Literal["openai", "anthropic", "local"] = "openai"
     llm_api_key: SecretStr | None = None
     llm_model: str | None = None
@@ -82,6 +89,22 @@ class Settings(BaseSettings):
             except ValidationError:
                 raise ValueError("Database URL must be a valid PostgreSQL connection URL") from None
         return value
+
+    @model_validator(mode="after")
+    def validate_database_overrides(self) -> Self:
+        overrides = (
+            (self.database_url, self.database_host, self.database_port, "DATABASE"),
+            (
+                self.analytics_database_url,
+                self.analytics_database_host,
+                self.analytics_database_port,
+                "ANALYTICS_DATABASE",
+            ),
+        )
+        for url, host, port, prefix in overrides:
+            if (host is not None or port is not None) and url is None:
+                raise ValueError(f"{prefix}_HOST and {prefix}_PORT require a configured URL")
+        return self
 
     @field_validator("redis_url")
     @classmethod
