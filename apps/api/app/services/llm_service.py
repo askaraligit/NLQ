@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from typing import Literal
 
 import httpx
@@ -11,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.core.config import Settings
 from app.services.schema_service import SchemaContext
+from app.services.workspace_service import ConversationContextTurn
 
 
 class VisualizationProposal(BaseModel):
@@ -39,7 +41,12 @@ class ProviderResponseError(RuntimeError):
 
 class LLMProvider(ABC):
     @abstractmethod
-    async def generate_query(self, question: str, context: SchemaContext) -> GeneratedQuery:
+    async def generate_query(
+        self,
+        question: str,
+        context: SchemaContext,
+        conversation: Sequence[ConversationContextTurn] = (),
+    ) -> GeneratedQuery:
         """Generate structured SQL proposal from the curated schema context."""
 
 
@@ -62,7 +69,12 @@ class OpenAIProvider(LLMProvider):
         self.max_output_tokens = max_output_tokens
         self.transport = transport
 
-    async def generate_query(self, question: str, context: SchemaContext) -> GeneratedQuery:
+    async def generate_query(
+        self,
+        question: str,
+        context: SchemaContext,
+        conversation: Sequence[ConversationContextTurn] = (),
+    ) -> GeneratedQuery:
         payload = {
             "model": self.model,
             "instructions": "\n".join(
@@ -77,7 +89,16 @@ class OpenAIProvider(LLMProvider):
                     "Explain the query definition, not unobserved results.",
                 )
             ),
-            "input": json.dumps({"question": question, "schema_context": context.as_prompt_data()}),
+            "input": json.dumps(
+                {
+                    "question": question,
+                    "schema_context": context.as_prompt_data(),
+                    "prior_turns": [
+                        {"question": turn.question, "summary": turn.summary}
+                        for turn in conversation
+                    ],
+                }
+            ),
             "max_output_tokens": self.max_output_tokens,
             "text": {
                 "format": {

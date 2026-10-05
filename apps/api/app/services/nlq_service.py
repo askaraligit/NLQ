@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 from app.services.llm_service import GeneratedQuery, LLMProvider
 from app.services.schema_service import SchemaService
 from app.services.sql_service import QueryExecutor, QueryResult, SQLValidator
+from app.services.workspace_service import ConversationContextTurn
 
 
 @dataclass(frozen=True)
@@ -38,10 +39,12 @@ class NLQService:
         self.validator = validator
         self.executor = executor
 
-    async def query(self, question: str) -> QueryResponseData:
+    async def query(
+        self, question: str, conversation: tuple[ConversationContextTurn, ...] = ()
+    ) -> QueryResponseData:
         started = perf_counter()
         context = self.schema_service.context_for(question)
-        proposal = await self.provider.generate_query(question, context)
+        proposal = await self.provider.generate_query(question, context, conversation)
         sql = self.validator.validate(proposal.sql, context)
         result = await asyncio.to_thread(self.executor.execute, sql)
         visualization_type, x_axis, y_axis = self._visualization(proposal, result)

@@ -4,13 +4,17 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.orm import Session
 
+from app.api.dependencies import get_application_session, get_current_user
+from app.services.auth_service import AuthenticatedUser
 from app.services.llm_service import ProviderResponseError
 from app.services.nlq_service import NLQService
 from app.services.sql_service import QueryExecutionError, QueryResultTooLargeError, SQLPolicyError
+from app.services.workspace_service import WorkspaceNotFoundError, WorkspaceService
 
 router = APIRouter(prefix="/nlq")
 
@@ -36,6 +40,7 @@ class QueryResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     query_id: UUID = Field(alias="queryId")
+    conversation_id: UUID = Field(alias="conversationId")
     question: str
     sql: str
     columns: list[ResultColumn]
@@ -80,6 +85,10 @@ def _get_service(request: Request) -> NLQService:
     return service
 
 
+def _workspace(request: Request) -> WorkspaceService:
+    return request.app.state.workspace_service
+
+
 @router.post(
     "/query",
     response_model=QueryResponse,
@@ -91,12 +100,21 @@ def _get_service(request: Request) -> NLQService:
     },
     summary="Generate, validate, and execute one read-only ERP analytics query",
 )
-async def query(request: Request, body: QueryRequest) -> QueryResponse:
-    # conversationId is reserved for bounded history in Phase 7.
-    _ = body.conversation_id
+async def query(
+    request: Request,
+    body: QueryRequest,
+    session: Session = Depends(get_application_session),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> QueryResponse:
     service = _get_service(request)
     try:
-        result = await service.query(body.question)
+        conversation, prior_turns = _workspace(request).prepare_conversation(
+            session, user, body.conversation_id, body.question
+        )
+        result = await service.query(body.question, prior_turns)
+        _workspace(request).record_query(session, user, conversation, body.question, result)
+    except WorkspaceNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(error)) from error
     except ProviderResponseError as error:
         raise NLQAPIError(
             status.HTTP_502_BAD_GATEWAY,
@@ -123,6 +141,7 @@ async def query(request: Request, body: QueryRequest) -> QueryResponse:
         ) from error
     return QueryResponse(
         query_id=result.query_id,
+        conversation_id=conversation.id,
         question=body.question,
         sql=result.sql,
         columns=[ResultColumn(name=column) for column in result.columns],

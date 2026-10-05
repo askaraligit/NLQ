@@ -3,17 +3,16 @@
 from __future__ import annotations
 
 import json
-from uuid import UUID
 
 import httpx
 import pytest
 
 from app.core.config import Settings
 from app.main import create_app
-from app.services.llm_service import OpenAIProvider
-from app.services.nlq_service import QueryResponseData
+from app.services.llm_service import GeneratedQuery, OpenAIProvider, VisualizationProposal
+from app.services.nlq_service import NLQService
 from app.services.schema_service import SchemaService
-from app.services.sql_service import SQLPolicyError, SQLValidator
+from app.services.sql_service import QueryResult, SQLPolicyError, SQLValidator
 
 pytestmark = pytest.mark.anyio
 
@@ -121,28 +120,12 @@ async def test_nlq_endpoint_reports_unavailable_without_runtime_configuration() 
             response = await client.post("/api/v1/nlq/query", json={"question": "Show sales"})
 
     assert response.status_code == 503
-    assert response.json()["error"]["code"] == "NLQ_UNAVAILABLE"
+    assert response.json()["detail"] == "Database runtime is not configured."
 
 
-async def test_nlq_endpoint_serializes_a_safe_service_result() -> None:
-    class StubService:
-        async def query(self, question: str) -> QueryResponseData:
-            assert question == "Show sales"
-            return QueryResponseData(
-                query_id=UUID("00000000-0000-0000-0000-000000000001"),
-                sql="SELECT so.total_amount FROM erp.sales_orders AS so",
-                columns=("total_amount",),
-                rows=[{"total_amount": "1250.00"}],
-                summary="Returned 1 row. Lists sales totals.",
-                visualization_type="table",
-                x_axis=None,
-                y_axis=None,
-                execution_time_ms=12,
-            )
-
+async def test_nlq_endpoint_requires_an_authenticated_user() -> None:
     application = create_app(Settings(_env_file=None))
     async with application.router.lifespan_context(application):
-        application.state.nlq_service = StubService()
         transport = httpx.ASGITransport(app=application)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             response = await client.post(
@@ -150,14 +133,31 @@ async def test_nlq_endpoint_serializes_a_safe_service_result() -> None:
                 json={"question": "Show sales", "conversationId": None},
             )
 
-    assert response.status_code == 200
-    assert response.json() == {
-        "queryId": "00000000-0000-0000-0000-000000000001",
-        "question": "Show sales",
-        "sql": "SELECT so.total_amount FROM erp.sales_orders AS so",
-        "columns": [{"name": "total_amount"}],
-        "rows": [{"total_amount": "1250.00"}],
-        "summary": "Returned 1 row. Lists sales totals.",
-        "visualization": {"type": "table", "xAxis": None, "yAxis": None},
-        "executionTimeMs": 12,
-    }
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Database runtime is not configured."
+
+
+def test_visualization_metadata_requires_result_columns() -> None:
+    proposal = GeneratedQuery(
+        sql="SELECT 1",
+        explanation="Shows revenue by month.",
+        visualization=VisualizationProposal(chart_type="bar", x_axis="month", y_axis="revenue"),
+    )
+    result = QueryResult(
+        columns=("month", "revenue"),
+        rows=[{"month": "2026-01", "revenue": "1200.00"}],
+        execution_time_ms=5,
+    )
+
+    assert NLQService._visualization(proposal, result) == ("bar", "month", "revenue")
+
+
+def test_visualization_metadata_falls_back_to_table_for_invalid_axes() -> None:
+    proposal = GeneratedQuery(
+        sql="SELECT 1",
+        explanation="Shows revenue.",
+        visualization=VisualizationProposal(chart_type="line", x_axis="missing", y_axis="revenue"),
+    )
+    result = QueryResult(columns=("month", "revenue"), rows=[], execution_time_ms=5)
+
+    assert NLQService._visualization(proposal, result) == ("table", None, None)

@@ -76,10 +76,53 @@ It returns a non-sensitive `NLQ_UNAVAILABLE` error until both the restricted ana
 and an OpenAI key/model are configured. It accepts `conversationId` for forward compatibility;
 conversation storage and reuse begin in Phase 7.
 
+## Phase 5 implementation
+
+The Next.js home page keeps the shell and static route on the server while `QueryWorkspace` is a
+small client boundary for input state and the one-shot query mutation. Its dedicated API client
+validates the public API URL and validates the shape of every successful response before rendering
+it. The browser receives only `NEXT_PUBLIC_API_URL`; database URLs, reader credentials, and LLM
+credentials remain exclusively in the API environment.
+
+The workspace supports suggested questions, Enter-to-submit with Shift+Enter for a newline, clear
+and disabled states, and non-sensitive API errors. A result includes a grounded summary, query
+metadata, a responsive table with client-side sorting and pagination, and a read-only SQL view
+with copy support. Fixed chart rendering and the result-grounded summary are extended in Phase 6;
+history, saved queries, and conversations are deferred to Phase 7.
+
+## Phase 6 implementation
+
+The API already returns a bounded `visualization` object after checking that its axes match result
+columns. The frontend maps only its `bar`, `line`, `area`, and `pie` values to fixed Recharts
+components; it never accepts chart code, expressions, or configuration from the model. It converts
+only finite numeric response values into chart series and shows an explanatory state when the
+backend selects a table, lacks axes, or returns nonnumeric values.
+
+The Phase 4 result-grounded summary remains the analytics summary. It is displayed alongside
+the row count and execution duration, so the prose and visual result remain tied to the same
+validated, read-only query response.
+
 In Docker Compose, URL credentials remain in `apps/api/.env`, while container-only host/port
 overrides route both runtime pools to the `postgres` service. The API never receives bootstrap or
 migration credentials. The Compose health check uses liveness, leaving readiness meaningful for
 deployments that require the database.
+
+## Phase 7 implementation
+
+The API now protects NLQ, history, saved-query, and settings routes with expiring HS256 bearer
+tokens. It stores only Argon2 password hashes and has no public registration endpoint; an
+administrator provisions users through the local CLI after migration. JWT validation requires the
+configured issuer, audience, expiry, issue time, and subject before loading an active user.
+
+Each NLQ request creates or continues a user-owned conversation. The service retrieves only the
+most recent configured query/summary pairs for that conversation and sends that bounded context to
+the provider. It stores the question, approved SQL, normalized result snapshot, summary, and safe
+visualization metadata in the application schema only after successful execution. History and saved
+query handlers always filter by the authenticated user, preventing cross-user access by guessed IDs.
+
+The Next.js workspace keeps its access token in session storage, exposes sign-in/sign-out, and adds
+working navigation for query history, saved queries, and settings. The browser supplies the bearer
+token on every private request; it never sees database, LLM, or JWT signing secrets.
 
 ## Target request flow
 

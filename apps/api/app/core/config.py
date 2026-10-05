@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     jwt_secret: SecretStr | None = None
     jwt_issuer: str = "nlq-api"
     jwt_audience: str = "nlq-web"
+    jwt_access_token_minutes: int = Field(default=60, ge=5, le=1_440)
     redis_url: SecretStr | None = None
 
     query_timeout_ms: int = Field(default=10_000, gt=0)
@@ -58,6 +59,7 @@ class Settings(BaseSettings):
     query_page_size: int = Field(default=100, gt=0)
     query_max_response_bytes: int = Field(default=5 * 1024 * 1024, gt=0)
     nlq_schema_max_tables: int = Field(default=6, ge=2, le=12)
+    conversation_max_turns: int = Field(default=4, ge=0, le=10)
 
     @field_validator("log_level", mode="before")
     @classmethod

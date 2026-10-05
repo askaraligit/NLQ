@@ -1,6 +1,15 @@
 """Complete metadata registration for migrations and offline schema inspection."""
 
-from app.models.application import AnalyticsPrincipal, SeedRun, Tenant
+from app.models.application import (
+    AnalyticsPrincipal,
+    Conversation,
+    QueryRecord,
+    SavedQuery,
+    SeedRun,
+    Tenant,
+    User,
+    UserSettings,
+)
 from app.models.base import Base
 from app.models.erp import (
     Customer,
@@ -19,6 +28,7 @@ from app.models.erp import (
 
 __all__ = [
     "AnalyticsPrincipal",
+    "Conversation",
     "Base",
     "Customer",
     "Payment",
@@ -27,6 +37,8 @@ __all__ = [
     "PurchaseInvoice",
     "PurchaseOrder",
     "PurchaseOrderItem",
+    "QueryRecord",
+    "SavedQuery",
     "SalesInvoice",
     "SalesOrder",
     "SalesOrderItem",
@@ -34,4 +46,6 @@ __all__ = [
     "Stock",
     "Supplier",
     "Tenant",
+    "User",
+    "UserSettings",
 ]

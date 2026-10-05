@@ -129,8 +129,9 @@ fixed `pg_catalog` search path, reads the protected mapping, and uses the origin
 `session_user`. A reader cannot change tenants by setting a custom GUC or switching to the
 migration role. An unmapped login has no tenant access.
 
-`nlq_app` currently has usage of `app` and SELECT on the tenant registry; grants for future
-application tables will accompany those migrations. It cannot read ERP tables. Runtime roles
+`nlq_app` has usage of `app`, SELECT on the tenant registry, and controlled CRUD grants on the
+Phase 7 `users`, `conversations`, `query_records`, `saved_queries`, and `user_settings` tables.
+`nlq_reader` has no grants on these application records. The application role cannot read ERP tables. Runtime roles
 cannot create schemas or temporary objects. Reader sessions default to read-only transactions,
 a 10-second statement timeout, a 1-second lock timeout, and a 10-second idle transaction timeout.
 Privileges still deny writes if a caller turns off the session read-only setting.
@@ -199,3 +200,15 @@ An offline script can be reviewed with `alembic upgrade head --sql` using migrat
 The initial downgrade removes the ERP and provisioning tables and their data. Rollback/re-apply
 verification belongs on disposable test databases. It preserves the bootstrap-created schemas
 and Alembic's version table so a subsequent upgrade can run.
+
+## Workspace identity and query records
+
+Revision `0002_workspace_identity` stores Argon2 password hashes in `app.users`, never plaintext
+credentials. A user owns conversations, query records, saved query snapshots, and one settings row.
+Every history and saved-query lookup includes the authenticated user ID; ownership is enforced by
+the API query predicate, rather than by a browser-supplied user identifier. Query records preserve
+the bounded result returned to the user, including columns, rows, SQL, summary, and visualization.
+
+The application API uses `nlq_app` only for this workspace data. Generated SQL remains exclusively
+on the distinct `nlq_reader` connection and ERP RLS policy. Apply the migration before using the
+login flow, then create a user with `python -m app.auth.create_user --email ... --tenant deccan-demo`.

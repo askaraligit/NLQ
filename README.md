@@ -2,9 +2,8 @@
 
 A natural-language analytics workspace built with Next.js, FastAPI, and PostgreSQL.
 
-**Current milestone: Phase 4 — secured NLQ execution.** FastAPI now creates a bounded schema
-context, obtains a structured SQL proposal through a provider adapter, validates it with a
-PostgreSQL AST policy, and executes it only through the read-only analytics role.
+**Current milestone: Phase 7 — authenticated workspace.** Users sign in to run queries, continue
+bounded conversations, revisit persisted results, save common questions, and retain preferences.
 
 ## Run with Docker
 
@@ -103,6 +102,18 @@ uv run --frozen python -m seeds
 uv run --frozen alembic check
 ```
 
+Phase 7 adds a workspace user table but deliberately has no public registration route. Set a
+random `JWT_SECRET` of at least 32 characters in `apps/api/.env`, then create the first user after
+migration and seeding:
+
+```powershell
+uv run --frozen python -m app.auth.create_user --email analyst@example.com --tenant deccan-demo
+```
+
+The command prompts for a password (minimum 12 characters), so it does not place the password in
+shell history. Sign in at http://localhost:3000/login. Access tokens are kept in browser session
+storage and expire after `JWT_ACCESS_TOKEN_MINUTES` (60 by default).
+
 The sample dataset is fixed as of **2026-09-30**. The main tenant has 600 sales orders,
 300 purchase orders, 80 products, 60 customers, and 20 suppliers. A smaller second tenant
 supports isolation tests. Repeating the seed command skips completed versions without replacing
@@ -171,9 +182,10 @@ frontend builds. Backend environment loading is anchored to `apps/api`, independ
 working directory. Optional future credentials remain unset until their feature is implemented.
 
 The default query limits are 10 seconds, 1,000 returned rows, 100 rows per page, and 5 MiB per
-response. `POST /api/v1/nlq/query` becomes available when the reader URL plus `LLM_API_KEY` and
-`LLM_MODEL` are configured. The Phase 4 OpenAI adapter uses the Responses API with strict
-structured output; set `LLM_PROVIDER=openai`. It never executes unparsed model text.
+response. `POST /api/v1/nlq/query` requires a bearer token, a reader URL, and `LLM_API_KEY` plus
+`LLM_MODEL`. The Phase 4 OpenAI adapter uses the Responses API with strict structured output; set
+`LLM_PROVIDER=openai`. It never executes unparsed model text. Follow-up questions supply at most
+`CONVERSATION_MAX_TURNS` prior question/summary pairs to the model.
 
 The Dockerfiles and Compose file are for local development. Production deployment hardening
 belongs to Phase 8. No production-readiness or tenant-isolation guarantees are implied by the
@@ -193,5 +205,4 @@ compose.yaml      Development services and persistent PostgreSQL volume
 
 See [architecture and implementation boundaries](docs/architecture.md).
 
-Phase 5 adds the interactive query experience over this API. Each later phase requires its own
-agreed scope.
+Phase 8 covers production deployment hardening. Each later phase requires its own agreed scope.

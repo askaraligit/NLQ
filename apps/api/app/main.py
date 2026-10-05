@@ -11,10 +11,12 @@ from app.api.router import api_router
 from app.api.routes.nlq import NLQAPIError, nlq_error_handler
 from app.core.config import Settings, get_settings
 from app.db.runtime import DatabaseConfigurationError, DatabaseRuntime, create_database_runtime
+from app.services.auth_service import AuthenticationConfigurationError, AuthService
 from app.services.llm_service import ProviderConfigurationError, create_llm_provider
 from app.services.nlq_service import NLQService
 from app.services.schema_service import SchemaService
 from app.services.sql_service import QueryExecutor, SQLValidator
+from app.services.workspace_service import WorkspaceService
 
 
 def create_app(
@@ -37,6 +39,12 @@ def create_app(
                 runtime = None
         application.state.database_runtime = runtime
         application.state.nlq_service = None
+        application.state.auth_service = None
+        application.state.workspace_service = WorkspaceService(settings.conversation_max_turns)
+        try:
+            application.state.auth_service = AuthService(settings)
+        except AuthenticationConfigurationError:
+            pass
         if runtime is not None:
             try:
                 application.state.nlq_service = NLQService(

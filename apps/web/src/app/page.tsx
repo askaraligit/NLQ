@@ -1,10 +1,11 @@
 import { AppShell } from "@/components/layout/app-shell";
-import { WorkspaceWelcome } from "@/components/layout/workspace-welcome";
+import { RequireAuth } from "@/components/auth/require-auth";
+import { QueryWorkspace } from "@/components/query/query-workspace";
 
 export default function HomePage() {
   return (
     <AppShell>
-      <WorkspaceWelcome />
+      <RequireAuth><QueryWorkspace /></RequireAuth>
     </AppShell>
   );
 }
