@@ -8,8 +8,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
+from app.api.routes.nlq import NLQAPIError, nlq_error_handler
 from app.core.config import Settings, get_settings
 from app.db.runtime import DatabaseConfigurationError, DatabaseRuntime, create_database_runtime
+from app.services.llm_service import ProviderConfigurationError, create_llm_provider
+from app.services.nlq_service import NLQService
+from app.services.schema_service import SchemaService
+from app.services.sql_service import QueryExecutor, SQLValidator
 
 
 def create_app(
@@ -31,6 +36,23 @@ def create_app(
                 # Liveness stays available while readiness reports missing/malformed runtime config.
                 runtime = None
         application.state.database_runtime = runtime
+        application.state.nlq_service = None
+        if runtime is not None:
+            try:
+                application.state.nlq_service = NLQService(
+                    schema_service=SchemaService(settings.nlq_schema_max_tables),
+                    provider=create_llm_provider(settings),
+                    validator=SQLValidator(),
+                    executor=QueryExecutor(
+                        sessions=runtime.analytics_sessions,
+                        timeout_ms=settings.query_timeout_ms,
+                        max_rows=settings.query_max_rows,
+                        max_response_bytes=settings.query_max_response_bytes,
+                    ),
+                )
+            except ProviderConfigurationError:
+                # Keep health checks independent of optional provider credentials.
+                application.state.nlq_service = None
         try:
             yield
         finally:
@@ -46,6 +68,7 @@ def create_app(
         lifespan=lifespan,
     )
     application.state.settings = settings
+    application.add_exception_handler(NLQAPIError, nlq_error_handler)
     application.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,

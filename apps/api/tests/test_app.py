@@ -27,7 +27,11 @@ async def test_application_bootstraps_without_database_or_provider(
         schema = await client.get("/openapi.json")
         assert schema.status_code == 200
         assert schema.json()["info"]["title"] == "NLQ API"
-        assert set(schema.json()["paths"]) == {"/api/v1/health/live", "/api/v1/health/ready"}
+        assert set(schema.json()["paths"]) == {
+            "/api/v1/health/live",
+            "/api/v1/health/ready",
+            "/api/v1/nlq/query",
+        }
 
 
 async def test_liveness_does_not_depend_on_database_configuration(

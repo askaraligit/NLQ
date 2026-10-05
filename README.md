@@ -2,9 +2,9 @@
 
 A natural-language analytics workspace built with Next.js, FastAPI, and PostgreSQL.
 
-**Current milestone: Phase 3 — backend connectivity.** FastAPI now owns separate, pooled
-application and analytics database paths, with liveness and readiness endpoints. SQL generation,
-authentication, and analytics results follow in later phases.
+**Current milestone: Phase 4 — secured NLQ execution.** FastAPI now creates a bounded schema
+context, obtains a structured SQL proposal through a provider adapter, validates it with a
+PostgreSQL AST policy, and executes it only through the read-only analytics role.
 
 ## Run with Docker
 
@@ -170,8 +170,10 @@ Only `.env.example` templates are committed. `NEXT_PUBLIC_*` values are public a
 frontend builds. Backend environment loading is anchored to `apps/api`, independent of the
 working directory. Optional future credentials remain unset until their feature is implemented.
 
-The default future query limits are 10 seconds, 1,000 returned rows, 100 rows per page, and
-5 MiB per response. They are validated configuration today, not an implemented query executor.
+The default query limits are 10 seconds, 1,000 returned rows, 100 rows per page, and 5 MiB per
+response. `POST /api/v1/nlq/query` becomes available when the reader URL plus `LLM_API_KEY` and
+`LLM_MODEL` are configured. The Phase 4 OpenAI adapter uses the Responses API with strict
+structured output; set `LLM_PROVIDER=openai`. It never executes unparsed model text.
 
 The Dockerfiles and Compose file are for local development. Production deployment hardening
 belongs to Phase 8. No production-readiness or tenant-isolation guarantees are implied by the
@@ -191,5 +193,5 @@ compose.yaml      Development services and persistent PostgreSQL volume
 
 See [architecture and implementation boundaries](docs/architecture.md).
 
-Phase 4 introduces the provider abstraction and secured NLQ pipeline. Each later phase requires
-its own agreed scope.
+Phase 5 adds the interactive query experience over this API. Each later phase requires its own
+agreed scope.

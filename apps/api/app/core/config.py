@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     llm_api_key: SecretStr | None = None
     llm_model: str | None = None
     llm_timeout_seconds: int = Field(default=30, gt=0)
+    llm_max_output_tokens: int = Field(default=1_000, ge=128, le=4_000)
     jwt_secret: SecretStr | None = None
     jwt_issuer: str = "nlq-api"
     jwt_audience: str = "nlq-web"
@@ -56,6 +57,7 @@ class Settings(BaseSettings):
     query_max_rows: int = Field(default=1_000, gt=0)
     query_page_size: int = Field(default=100, gt=0)
     query_max_response_bytes: int = Field(default=5 * 1024 * 1024, gt=0)
+    nlq_schema_max_tables: int = Field(default=6, ge=2, le=12)
 
     @field_validator("log_level", mode="before")
     @classmethod

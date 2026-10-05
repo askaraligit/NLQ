@@ -56,6 +56,26 @@ returns only `ok`, `unconfigured`, or `unavailable` status for each path—never
 credentials, or database exceptions. Liveness remains available if runtime URLs are absent or
 malformed so operational diagnosis does not depend on database availability.
 
+## Phase 4 implementation
+
+`POST /api/v1/nlq/query` accepts a natural-language question and runs one fixed pipeline:
+
+1. `SchemaService` ranks the curated ERP catalog and sends only the relevant relations, columns,
+   relationships, and business rules to the provider.
+2. The `LLMProvider` interface isolates OpenAI from future adapters. The current OpenAI adapter
+   uses the Responses API `text.format` JSON-schema mode with strict output validation.
+3. `SQLValidator` parses PostgreSQL with SQLGlot and rejects non-SELECT statements, multiple
+   statements, CTEs, comments, unsafe functions, `SELECT *`, unauthorized relations, and columns
+   outside the selected context.
+4. `QueryExecutor` runs the validated statement only through the `nlq_reader` session factory.
+   It applies a transaction-local statement timeout, an outer row limit, and a measured response
+   byte limit. The database role and RLS remain independent enforcement layers.
+
+The route returns normalized JSON rows, a result-grounded summary, and visualization metadata.
+It returns a non-sensitive `NLQ_UNAVAILABLE` error until both the restricted analytics connection
+and an OpenAI key/model are configured. It accepts `conversationId` for forward compatibility;
+conversation storage and reuse begin in Phase 7.
+
 In Docker Compose, URL credentials remain in `apps/api/.env`, while container-only host/port
 overrides route both runtime pools to the `postgres` service. The API never receives bootstrap or
 migration credentials. The Compose health check uses liveness, leaving readiness meaningful for
