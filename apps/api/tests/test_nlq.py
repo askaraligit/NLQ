@@ -11,7 +11,8 @@ from app.core.config import Settings
 from app.main import create_app
 from app.services.llm_service import GeneratedQuery, OpenAIProvider, VisualizationProposal
 from app.services.nlq_service import NLQService
-from app.services.schema_service import SchemaService
+from app.services.nvidia_llm_service import NvidiaProvider
+from app.services.schema_service import SchemaColumn, SchemaContext, SchemaService, SchemaTable
 from app.services.sql_service import QueryResult, SQLPolicyError, SQLValidator
 
 pytestmark = pytest.mark.anyio
@@ -37,6 +38,27 @@ def test_sql_validator_accepts_a_curated_sales_aggregate() -> None:
     )
 
     assert "erp.sales_orders AS so" in normalized
+
+
+def test_sql_validator_accepts_an_approved_user_connection_schema() -> None:
+    context = SchemaContext(
+        schema_name="public",
+        tables=(
+            SchemaTable(
+                name="orders",
+                description="Customer orders.",
+                columns=(SchemaColumn("total", "NUMERIC", False),),
+                keywords=("order",),
+            ),
+        ),
+        relationships=(),
+        business_rules=(),
+    )
+
+    assert (
+        SQLValidator().validate("SELECT o.total FROM public.orders AS o", context)
+        == "SELECT o.total FROM public.orders AS o"
+    )
 
 
 @pytest.mark.parametrize(
@@ -110,6 +132,50 @@ async def test_openai_provider_requests_strict_structured_output() -> None:
         "x_axis",
         "y_axis",
     ]
+
+
+async def test_nvidia_provider_uses_chat_completions_and_parses_json() -> None:
+    captured: dict[str, object] = {}
+
+    def responder(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "sql": "SELECT so.total_amount FROM erp.sales_orders AS so",
+                                    "explanation": "Lists sales order totals.",
+                                    "visualization": {
+                                        "chart_type": "table",
+                                        "x_axis": "",
+                                        "y_axis": "",
+                                    },
+                                }
+                            )
+                        }
+                    }
+                ]
+            },
+        )
+
+    provider = NvidiaProvider(
+        api_key="test-key",
+        model="meta/llama-3.3-70b-instruct",
+        timeout_seconds=5,
+        max_output_tokens=500,
+        transport=httpx.MockTransport(responder),
+    )
+    proposal = await provider.generate_query(
+        "Show sales totals", SchemaService(max_tables=6).context_for("Show sales totals")
+    )
+
+    assert proposal.sql.startswith("SELECT")
+    assert captured["stream"] is False
+    assert captured["messages"][0]["role"] == "system"
 
 
 async def test_nlq_endpoint_reports_unavailable_without_runtime_configuration() -> None:

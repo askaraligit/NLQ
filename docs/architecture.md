@@ -124,6 +124,20 @@ The Next.js workspace keeps its access token in session storage, exposes sign-in
 working navigation for query history, saved queries, and settings. The browser supplies the bearer
 token on every private request; it never sees database, LLM, or JWT signing secrets.
 
+## User-managed data connections
+
+Authenticated users can add a PostgreSQL or MongoDB connection from the Data connections workspace
+screen. The browser sends the URL only to the API over its configured origin. The API validates the
+URL, tests connectivity, inspects a PostgreSQL schema or MongoDB database, and encrypts the
+normalized URL with its server-only Fernet key before storing it. Responses contain only connection
+names, source type, schema or database name, active state, and timestamps.
+
+At query time, the active connection is decrypted in memory, introspected into a bounded schema
+context, and disposed after use. PostgreSQL uses the SQL parser and a read-only transaction.
+MongoDB uses a stage/operator allow-list for aggregation pipelines and rejects write, JavaScript,
+cross-collection, and output stages. Both paths retain timeout, row, and response-size enforcement.
+Connection owners should always provide a dedicated least-privilege, read-only database account.
+
 ## Target request flow
 
 ```mermaid
@@ -134,7 +148,7 @@ flowchart TD
     NLQ --> Context[Relevant schema and bounded conversation context]
     Context --> Provider[LLMProvider interface]
     Provider --> JSON[Pydantic structured-output validation]
-    JSON --> Policy[PostgreSQL parser and SQL security policy]
+    JSON --> Policy[SQL parser or MongoDB aggregation policy]
     Auth --> Policy
     Policy --> Execute[Read-only query execution with limits]
     Execute --> ERP[(ERP data)]

@@ -3,6 +3,7 @@
 from app.models.application import (
     AnalyticsPrincipal,
     Conversation,
+    DataConnection,
     QueryRecord,
     SavedQuery,
     SeedRun,
@@ -29,6 +30,7 @@ from app.models.erp import (
 __all__ = [
     "AnalyticsPrincipal",
     "Conversation",
+    "DataConnection",
     "Base",
     "Customer",
     "Payment",

@@ -76,6 +76,7 @@ class WorkspaceService:
             conversation_id=conversation.id,
             question=question,
             sql=result.sql,
+            query_language=result.query_language,
             summary=result.summary,
             columns=[{"name": name} for name in result.columns],
             rows=result.rows,

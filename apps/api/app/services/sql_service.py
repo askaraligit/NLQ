@@ -108,12 +108,12 @@ class SQLValidator:
                 raise SQLPolicyError("Generated SQL contains an unsupported operation.")
         tables = list(expression.find_all(exp.Table))
         if not tables:
-            raise SQLPolicyError("A query must reference an approved ERP relation.")
+            raise SQLPolicyError("A query must reference an approved relation.")
         aliases: dict[str, str] = {}
         for table in tables:
             table_name = table.name.lower()
             schema_name = (table.db or "").lower()
-            if schema_name != "erp" or table_name not in context.table_names:
+            if schema_name != context.schema_name or table_name not in context.table_names:
                 raise SQLPolicyError(
                     "Generated SQL references a relation outside the approved context."
                 )
@@ -174,6 +174,7 @@ class QueryExecutor:
         try:
             with self.sessions() as session:
                 with session.begin():
+                    session.execute(text("SET TRANSACTION READ ONLY"))
                     session.execute(
                         text("SELECT set_config('statement_timeout', :timeout, true)"),
                         {"timeout": f"{self.timeout_ms}ms"},

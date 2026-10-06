@@ -8,7 +8,7 @@ from time import perf_counter
 from uuid import UUID, uuid4
 
 from app.services.llm_service import GeneratedQuery, LLMProvider
-from app.services.schema_service import SchemaService
+from app.services.schema_service import SchemaContext, SchemaService
 from app.services.sql_service import QueryExecutor, QueryResult, SQLValidator
 from app.services.workspace_service import ConversationContextTurn
 
@@ -24,6 +24,7 @@ class QueryResponseData:
     x_axis: str | None
     y_axis: str | None
     execution_time_ms: int
+    query_language: str = "sql"
 
 
 class NLQService:
@@ -42,16 +43,27 @@ class NLQService:
     async def query(
         self, question: str, conversation: tuple[ConversationContextTurn, ...] = ()
     ) -> QueryResponseData:
+        return await self.query_with_context(
+            question, self.schema_service.context_for(question), conversation
+        )
+
+    async def query_with_context(
+        self,
+        question: str,
+        context: SchemaContext,
+        conversation: tuple[ConversationContextTurn, ...] = (),
+        executor: QueryExecutor | None = None,
+    ) -> QueryResponseData:
         started = perf_counter()
-        context = self.schema_service.context_for(question)
         proposal = await self.provider.generate_query(question, context, conversation)
         sql = self.validator.validate(proposal.sql, context)
-        result = await asyncio.to_thread(self.executor.execute, sql)
+        result = await asyncio.to_thread((executor or self.executor).execute, sql)
         visualization_type, x_axis, y_axis = self._visualization(proposal, result)
         elapsed_ms = round((perf_counter() - started) * 1000)
         return QueryResponseData(
             query_id=uuid4(),
             sql=sql,
+            query_language="sql",
             columns=result.columns,
             rows=result.rows,
             summary=self._summary(proposal, result),

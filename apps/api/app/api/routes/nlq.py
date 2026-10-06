@@ -11,7 +11,14 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_application_session, get_current_user
 from app.services.auth_service import AuthenticatedUser
-from app.services.llm_service import ProviderResponseError
+from app.services.connection_service import (
+    ConnectionService,
+    ConnectionUnavailableError,
+    OpenMongoConnection,
+)
+from app.services.llm_service import ProviderResponseError, create_llm_provider
+from app.services.mongo_nlq_service import MongoNLQService
+from app.services.mongo_service import MongoPolicyError, MongoQueryExecutionError
 from app.services.nlq_service import NLQService
 from app.services.sql_service import QueryExecutionError, QueryResultTooLargeError, SQLPolicyError
 from app.services.workspace_service import WorkspaceNotFoundError, WorkspaceService
@@ -24,6 +31,15 @@ class QueryRequest(BaseModel):
 
     question: str = Field(min_length=3, max_length=1_000)
     conversation_id: UUID | None = Field(default=None, alias="conversationId")
+    model: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class ModelOptionsResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    provider: str
+    default_model: str = Field(alias="defaultModel")
+    models: list[str]
 
 
 class ResultColumn(BaseModel):
@@ -43,6 +59,7 @@ class QueryResponse(BaseModel):
     conversation_id: UUID = Field(alias="conversationId")
     question: str
     sql: str
+    query_language: str = Field(alias="queryLanguage")
     columns: list[ResultColumn]
     rows: list[dict[str, object]]
     summary: str
@@ -89,6 +106,41 @@ def _workspace(request: Request) -> WorkspaceService:
     return request.app.state.workspace_service
 
 
+def _connections(request: Request) -> ConnectionService | None:
+    return getattr(request.app.state, "connection_service", None)
+
+
+def _mongo_service(request: Request) -> MongoNLQService | None:
+    return getattr(request.app.state, "mongo_nlq_service", None)
+
+
+def _selected_model(request: Request, requested: str | None) -> str:
+    settings = request.app.state.settings
+    default = settings.llm_model
+    if default is None:
+        raise NLQAPIError(status.HTTP_503_SERVICE_UNAVAILABLE, "NLQ_UNAVAILABLE", "No model is configured.")
+    allowed = tuple(dict.fromkeys((default, *settings.llm_allowed_models)))
+    if requested is None:
+        return default
+    if requested not in allowed:
+        raise NLQAPIError(status.HTTP_422_UNPROCESSABLE_ENTITY, "MODEL_NOT_ALLOWED", "Choose a configured model.")
+    return requested
+
+
+@router.get("/models", response_model=ModelOptionsResponse)
+def models(
+    request: Request,
+    _: AuthenticatedUser = Depends(get_current_user),
+) -> ModelOptionsResponse:
+    settings = request.app.state.settings
+    default = _selected_model(request, None)
+    return ModelOptionsResponse(
+        provider=settings.llm_provider,
+        defaultModel=default,
+        models=list(dict.fromkeys((default, *settings.llm_allowed_models))),
+    )
+
+
 @router.post(
     "/query",
     response_model=QueryResponse,
@@ -107,14 +159,58 @@ async def query(
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> QueryResponse:
     service = _get_service(request)
+    selected_model = _selected_model(request, body.model)
+    if selected_model != request.app.state.settings.llm_model:
+        provider = create_llm_provider(
+            request.app.state.settings.model_copy(update={"llm_model": selected_model})
+        )
+        service = NLQService(service.schema_service, provider, service.validator, service.executor)
     try:
         conversation, prior_turns = _workspace(request).prepare_conversation(
             session, user, body.conversation_id, body.question
         )
-        result = await service.query(body.question, prior_turns)
+        connections = _connections(request)
+        if connections is None:
+            result = await service.query(body.question, prior_turns)
+        else:
+            with connections.open_active(session, user) as source:
+                if isinstance(source, OpenMongoConnection):
+                    mongo_service = _mongo_service(request)
+                    if mongo_service is None:
+                        raise NLQAPIError(
+                            status.HTTP_503_SERVICE_UNAVAILABLE,
+                            "NLQ_UNAVAILABLE",
+                            "MongoDB querying is unavailable until the query provider is configured.",
+                        )
+                    if selected_model != request.app.state.settings.llm_model:
+                        mongo_service = MongoNLQService(
+                            provider=service.provider,
+                            validator=mongo_service.validator,
+                        )
+                    result = await mongo_service.query_with_context(
+                        body.question,
+                        source.schema_service.context_for(body.question),
+                        connections.mongo_executor(source),
+                        prior_turns,
+                    )
+                elif source is not None:
+                    result = await service.query_with_context(
+                        body.question,
+                        source.schema_service.context_for(body.question),
+                        prior_turns,
+                        connections.executor(source),
+                    )
+                else:
+                    result = await service.query(body.question, prior_turns)
         _workspace(request).record_query(session, user, conversation, body.question, result)
     except WorkspaceNotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(error)) from error
+    except ConnectionUnavailableError as error:
+        raise NLQAPIError(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "CONNECTION_UNAVAILABLE",
+            "The active data connection could not be used.",
+        ) from error
     except ProviderResponseError as error:
         raise NLQAPIError(
             status.HTTP_502_BAD_GATEWAY,
@@ -126,6 +222,12 @@ async def query(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             "UNSAFE_GENERATED_SQL",
             "The generated query did not pass the SQL safety policy.",
+        ) from error
+    except MongoPolicyError as error:
+        raise NLQAPIError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "UNSAFE_GENERATED_MONGODB_PIPELINE",
+            "The generated MongoDB pipeline did not pass the safety policy.",
         ) from error
     except QueryResultTooLargeError as error:
         raise NLQAPIError(
@@ -139,11 +241,18 @@ async def query(
             "QUERY_EXECUTION_FAILED",
             "The query could not be executed against the analytics database.",
         ) from error
+    except MongoQueryExecutionError as error:
+        raise NLQAPIError(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "QUERY_EXECUTION_FAILED",
+            "The query could not be executed against the active data source.",
+        ) from error
     return QueryResponse(
         query_id=result.query_id,
         conversation_id=conversation.id,
         question=body.question,
         sql=result.sql,
+        queryLanguage=result.query_language,
         columns=[ResultColumn(name=column) for column in result.columns],
         rows=result.rows,
         summary=result.summary,

@@ -13,6 +13,7 @@ export type NLQQueryResponse = {
   conversationId: string;
   question: string;
   sql: string;
+  queryLanguage: "sql" | "mongodb";
   columns: Array<{ name: string }>;
   rows: QueryRow[];
   summary: string;

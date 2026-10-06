@@ -5,6 +5,7 @@ description = "FastAPI foundation for the NLQ application"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic>=1.14,<2",
+    "cryptography>=46,<47",
     "fastapi>=0.115,<1.0",
     "httpx>=0.28,<1.0",
     "psycopg[binary]>=3.2,<4",
@@ -12,6 +13,7 @@ dependencies = [
     "pydantic-settings>=2.7,<3.0",
     "pwdlib[argon2]>=0.3,<1",
     "pyjwt>=2.10,<3",
+    "pymongo>=4.12,<5",
     "python-dotenv>=1.0,<2",
     "sqlglot>=28.0,<29.0",
     "sqlalchemy>=2.0,<2.1",
@@ -33,6 +35,7 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
 "app/api/**/*.py" = ["B008"]

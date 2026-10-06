@@ -5,19 +5,17 @@ import { Check, Copy } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
-export function SqlViewer({ sql }: Readonly<{ sql: string }>) {
+export function SqlViewer({ sql, language = "sql" }: Readonly<{ sql: string; language?: "sql" | "mongodb" }>) {
   const [copied, setCopied] = useState(false);
-
   async function copySql() {
     await navigator.clipboard.writeText(sql);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1800);
   }
-
   return (
     <div className="overflow-hidden rounded-xl border bg-[#18302d] text-[#e8f4ed]">
       <div className="flex items-center justify-between border-b border-white/10 px-4 py-2.5">
-        <span className="font-mono text-xs text-white/65">Generated SQL · read only</span>
+        <span className="font-mono text-xs text-white/65">{language === "mongodb" ? "Generated MongoDB pipeline · read only" : "Generated SQL · read only"}</span>
         <Button type="button" size="sm" variant="ghost" onClick={copySql} className="h-7 text-white/80 hover:bg-white/10 hover:text-white">
           {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}{copied ? "Copied" : "Copy"}
         </Button>

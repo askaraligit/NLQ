@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { AlertCircle, LoaderCircle, Sparkles } from "lucide-react";
 
 import { QueryComposer } from "@/components/query/query-composer";
 import { QueryResult } from "@/components/results/query-result";
 import { useAuth } from "@/components/auth/auth-provider";
-import { submitQuery } from "@/lib/api/nlq";
+import { getModelOptions, submitQuery } from "@/lib/api/nlq";
 import type { NLQQueryResponse } from "@/types/nlq";
 
 export function QueryWorkspace() {
@@ -20,6 +20,18 @@ export function QueryWorkspace() {
   const [conversationId, setConversationId] = useState<string | undefined>(
     () => searchParams.get("conversation") ?? undefined,
   );
+  const [model, setModel] = useState("");
+  const [models, setModels] = useState<string[]>([]);
+  const [provider, setProvider] = useState("");
+
+  useEffect(() => {
+    if (!token) return;
+    getModelOptions(token).then((options) => {
+      setModels(options.models);
+      setModel((current) => current && options.models.includes(current) ? current : options.defaultModel);
+      setProvider(options.provider);
+    }).catch(() => undefined);
+  }, [token]);
 
   async function runQuery() {
     const trimmedQuestion = question.trim();
@@ -31,7 +43,7 @@ export function QueryWorkspace() {
     setIsPending(true);
     try {
       if (!token) return;
-      const next = await submitQuery(trimmedQuestion, token, conversationId);
+      const next = await submitQuery(trimmedQuestion, token, conversationId, undefined, model || undefined);
       setResult(next);
       setConversationId(next.conversationId);
     } catch (caughtError) {
@@ -43,7 +55,7 @@ export function QueryWorkspace() {
 
   return (
     <div className="space-y-8">
-      <QueryComposer question={question} isPending={isPending} onQuestionChange={setQuestion} onSubmit={runQuery} />
+      <QueryComposer question={question} isPending={isPending} onQuestionChange={setQuestion} onSubmit={runQuery} model={model} models={models} provider={provider} onModelChange={setModel} />
       {error ? (
         <div role="alert" className="flex gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
           <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />

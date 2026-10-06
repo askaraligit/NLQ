@@ -12,7 +12,10 @@ from app.api.routes.nlq import NLQAPIError, nlq_error_handler
 from app.core.config import Settings, get_settings
 from app.db.runtime import DatabaseConfigurationError, DatabaseRuntime, create_database_runtime
 from app.services.auth_service import AuthenticationConfigurationError, AuthService
+from app.services.connection_service import ConnectionConfigurationError, ConnectionService
 from app.services.llm_service import ProviderConfigurationError, create_llm_provider
+from app.services.mongo_nlq_service import MongoNLQService
+from app.services.mongo_service import MongoPipelineValidator
 from app.services.nlq_service import NLQService
 from app.services.schema_service import SchemaService
 from app.services.sql_service import QueryExecutor, SQLValidator
@@ -39,17 +42,24 @@ def create_app(
                 runtime = None
         application.state.database_runtime = runtime
         application.state.nlq_service = None
+        application.state.mongo_nlq_service = None
         application.state.auth_service = None
+        application.state.connection_service = None
         application.state.workspace_service = WorkspaceService(settings.conversation_max_turns)
         try:
             application.state.auth_service = AuthService(settings)
         except AuthenticationConfigurationError:
             pass
+        try:
+            application.state.connection_service = ConnectionService(settings)
+        except ConnectionConfigurationError:
+            pass
         if runtime is not None:
             try:
+                provider = create_llm_provider(settings)
                 application.state.nlq_service = NLQService(
                     schema_service=SchemaService(settings.nlq_schema_max_tables),
-                    provider=create_llm_provider(settings),
+                    provider=provider,
                     validator=SQLValidator(),
                     executor=QueryExecutor(
                         sessions=runtime.analytics_sessions,
@@ -57,6 +67,10 @@ def create_app(
                         max_rows=settings.query_max_rows,
                         max_response_bytes=settings.query_max_response_bytes,
                     ),
+                )
+                application.state.mongo_nlq_service = MongoNLQService(
+                    provider=provider,
+                    validator=MongoPipelineValidator(settings.query_max_rows),
                 )
             except ProviderConfigurationError:
                 # Keep health checks independent of optional provider credentials.

@@ -183,9 +183,22 @@ working directory. Optional future credentials remain unset until their feature 
 
 The default query limits are 10 seconds, 1,000 returned rows, 100 rows per page, and 5 MiB per
 response. `POST /api/v1/nlq/query` requires a bearer token, a reader URL, and `LLM_API_KEY` plus
-`LLM_MODEL`. The Phase 4 OpenAI adapter uses the Responses API with strict structured output; set
-`LLM_PROVIDER=openai`. It never executes unparsed model text. Follow-up questions supply at most
+`LLM_MODEL`. Set `LLM_PROVIDER=openai` with `LLM_API_KEY`, or `LLM_PROVIDER=nvidia` with
+`NVIDIA_API_KEY`. The provider output is parsed before execution. Follow-up questions supply at most
 `CONVERSATION_MAX_TURNS` prior question/summary pairs to the model.
+
+Users can also add a PostgreSQL or MongoDB source at **Data connections** after signing in. The API
+tests the connection and stores its URL only as encrypted server-side data; it never returns a URL
+or password to the browser. Set `CONNECTION_ENCRYPTION_KEY` to a Fernet key before enabling this capability:
+
+```powershell
+..venv\Scripts\python.exe -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Use a dedicated read-only database account. PostgreSQL sources use validated SQL and read-only
+transactions. MongoDB sources require a database name and use a constrained read-only aggregation
+pipeline. Both paths inspect only a bounded schema context and apply timeout, row, and response-size
+limits. The seeded ERP data is used when no user connection is active.
 
 The Dockerfiles and Compose file are for local development. Production deployment hardening
 belongs to Phase 8. No production-readiness or tenant-isolation guarantees are implied by the

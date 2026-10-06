@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { saveQuery } from "@/lib/api/workspace";
 import type { NLQQueryResponse } from "@/types/nlq";
 
-type ResultTab = "table" | "chart" | "sql";
+type ResultTab = "table" | "chart" | "query";
 
 export function QueryResult({ result, token }: Readonly<{ result: NLQQueryResponse; token: string }>) {
   const [activeTab, setActiveTab] = useState<ResultTab>("table");
@@ -51,7 +51,7 @@ export function QueryResult({ result, token }: Readonly<{ result: NLQQueryRespon
       </Card>
       <Card className="overflow-hidden shadow-none">
         <div className="flex border-b px-4 pt-3 sm:px-6">
-          {(["table", "chart", "sql"] as const).map((tab) => {
+          {(["table", "chart", "query"] as const).map((tab) => {
             const Icon = tab === "table" ? TableProperties : tab === "chart" ? ChartNoAxesCombined : Braces;
             return (
               <button
@@ -72,7 +72,7 @@ export function QueryResult({ result, token }: Readonly<{ result: NLQQueryRespon
         <CardContent className="p-4 sm:p-6">
           {activeTab === "table" ? <QueryTable columns={result.columns} rows={result.rows} /> : null}
           {activeTab === "chart" ? <AnalyticsChart result={result} /> : null}
-          {activeTab === "sql" ? <SqlViewer sql={result.sql} /> : null}
+          {activeTab === "query" ? <SqlViewer sql={result.sql} language={result.queryLanguage} /> : null}
         </CardContent>
       </Card>
     </section>

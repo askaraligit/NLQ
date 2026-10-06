@@ -17,6 +17,14 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.core.provider_config import (
+    ACTIVE_LLM_MODEL,
+    ACTIVE_LLM_PROVIDER,
+    ALLOWED_LLM_MODELS,
+    LLM_MAX_OUTPUT_TOKENS,
+    LLM_TIMEOUT_SECONDS,
+)
+
 API_DIRECTORY = Path(__file__).resolve().parents[2]
 
 
@@ -43,15 +51,18 @@ class Settings(BaseSettings):
     database_pool_size: int = Field(default=5, ge=1, le=20)
     database_max_overflow: int = Field(default=5, ge=0, le=20)
     database_pool_timeout_seconds: int = Field(default=5, ge=1, le=30)
-    llm_provider: Literal["openai", "anthropic", "local"] = "openai"
+    llm_provider: Literal["openai", "nvidia", "anthropic", "local"] = ACTIVE_LLM_PROVIDER
     llm_api_key: SecretStr | None = None
-    llm_model: str | None = None
-    llm_timeout_seconds: int = Field(default=30, gt=0)
-    llm_max_output_tokens: int = Field(default=1_000, ge=128, le=4_000)
+    nvidia_api_key: SecretStr | None = None
+    llm_model: str | None = ACTIVE_LLM_MODEL
+    llm_allowed_models: list[str] = Field(default_factory=lambda: list(ALLOWED_LLM_MODELS))
+    llm_timeout_seconds: int = Field(default=LLM_TIMEOUT_SECONDS, gt=0)
+    llm_max_output_tokens: int = Field(default=LLM_MAX_OUTPUT_TOKENS, ge=128, le=4_000)
     jwt_secret: SecretStr | None = None
     jwt_issuer: str = "nlq-api"
     jwt_audience: str = "nlq-web"
     jwt_access_token_minutes: int = Field(default=60, ge=5, le=1_440)
+    connection_encryption_key: SecretStr | None = None
     redis_url: SecretStr | None = None
 
     query_timeout_ms: int = Field(default=10_000, gt=0)

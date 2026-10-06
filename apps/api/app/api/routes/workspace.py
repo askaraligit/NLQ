@@ -31,6 +31,7 @@ class HistoryItem(BaseModel):
     conversation_id: UUID = Field(alias="conversationId")
     question: str
     sql: str
+    query_language: str = Field(alias="queryLanguage")
     summary: str
     columns: list[dict[str, str]]
     rows: list[dict[str, object]]
@@ -68,6 +69,7 @@ def _history_item(record: object) -> HistoryItem:
         conversationId=record.conversation_id,
         question=record.question,
         sql=record.sql,
+        queryLanguage=record.query_language,
         summary=record.summary,
         columns=record.columns,
         rows=record.rows,

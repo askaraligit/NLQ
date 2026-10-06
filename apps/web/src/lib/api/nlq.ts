@@ -20,6 +20,8 @@ export class NLQApiError extends Error {
   }
 }
 
+export type ModelOptions = { provider: string; defaultModel: string; models: string[] };
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -87,6 +89,7 @@ function readQueryResponse(payload: unknown): NLQQueryResponse {
     conversationId: readRequiredString(payload, "conversationId"),
     question: readRequiredString(payload, "question"),
     sql: readRequiredString(payload, "sql"),
+    queryLanguage: payload.queryLanguage === "mongodb" ? "mongodb" : "sql",
     columns,
     rows: readRows(payload.rows),
     summary: readRequiredString(payload, "summary"),
@@ -111,15 +114,28 @@ export async function submitQuery(
   token: string,
   conversationId?: string,
   signal?: AbortSignal,
+  model?: string,
 ): Promise<NLQQueryResponse> {
   const response = await fetch(`${publicEnv.apiUrl}/nlq/query`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ question, ...(conversationId ? { conversationId } : {}) }),
+    body: JSON.stringify({ question, ...(conversationId ? { conversationId } : {}), ...(model ? { model } : {}) }),
     signal,
   });
   if (!response.ok) {
     throw await readError(response);
   }
   return readQueryResponse(await response.json());
+}
+
+export async function getModelOptions(token: string): Promise<ModelOptions> {
+  const response = await fetch(`${publicEnv.apiUrl}/nlq/models`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw await readError(response);
+  const payload: unknown = await response.json();
+  if (!isRecord(payload) || typeof payload.provider !== "string" || typeof payload.defaultModel !== "string" || !Array.isArray(payload.models) || !payload.models.every((value) => typeof value === "string")) {
+    throw new NLQApiError("INVALID_RESPONSE", "The model service returned an invalid response.");
+  }
+  return { provider: payload.provider, defaultModel: payload.defaultModel, models: payload.models };
 }

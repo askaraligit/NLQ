@@ -33,6 +33,7 @@ class SchemaRelationship:
 
 @dataclass(frozen=True)
 class SchemaContext:
+    schema_name: str
     tables: tuple[SchemaTable, ...]
     relationships: tuple[SchemaRelationship, ...]
     business_rules: tuple[str, ...]
@@ -49,7 +50,7 @@ class SchemaContext:
 
     def as_prompt_data(self) -> dict[str, object]:
         return {
-            "schema": "erp",
+            "schema": self.schema_name,
             "tables": [
                 {
                     "name": table.name,
@@ -203,6 +204,7 @@ class SchemaService:
         selected = selected[: self.max_tables]
         selected_set = set(selected)
         return SchemaContext(
+            schema_name="erp",
             tables=tuple(self._catalog[name] for name in selected),
             relationships=tuple(
                 relationship

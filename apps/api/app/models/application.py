@@ -85,6 +85,9 @@ class QueryRecord(Base):
     )
     question: Mapped[str] = mapped_column(Text)
     sql: Mapped[str] = mapped_column(Text)
+    query_language: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'sql'")
+    )
     summary: Mapped[str] = mapped_column(Text)
     columns: Mapped[list[dict[str, str]]] = mapped_column(JSON)
     rows: Mapped[list[dict[str, object]]] = mapped_column(JSON)
@@ -128,3 +131,23 @@ class UserSettings(Timestamps, Base):
     compact_tables: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
+
+
+class DataConnection(Timestamps, Base):
+    __tablename__ = "data_connections"
+    __table_args__ = {"schema": "app", "comment": "Encrypted user-owned database sources."}
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, server_default=text("gen_random_uuid()"))
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("app.users.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(120))
+    encrypted_url: Mapped[str] = mapped_column(Text)
+    source_type: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'postgresql'")
+    )
+    schema_name: Mapped[str] = mapped_column(
+        String(63), nullable=False, server_default=text("'public'")
+    )
+    database_name: Mapped[str | None] = mapped_column(String(128))
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))

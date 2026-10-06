@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Bookmark, ChevronRight, History, LogOut, MessageSquarePlus, Settings2, Sparkles } from "lucide-react";
+import { Bookmark, ChevronRight, Database, History, LogOut, MessageSquarePlus, Settings2, Sparkles } from "lucide-react";
 
 import { useAuth } from "@/components/auth/auth-provider";
 import { Badge } from "@/components/ui/badge";
 
 const navigation = [
   { label: "New query", href: "/", icon: MessageSquarePlus },
+  { label: "Data connections", href: "/connections", icon: Database },
   { label: "Query history", href: "/history", icon: History },
   { label: "Saved queries", href: "/saved", icon: Bookmark },
   { label: "Settings", href: "/settings", icon: Settings2 },

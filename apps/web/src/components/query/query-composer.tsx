@@ -17,6 +17,10 @@ type QueryComposerProps = {
   isPending: boolean;
   onQuestionChange: (question: string) => void;
   onSubmit: () => void;
+  model: string;
+  models: string[];
+  provider: string;
+  onModelChange: (model: string) => void;
 };
 
 export function QueryComposer({
@@ -24,6 +28,10 @@ export function QueryComposer({
   isPending,
   onQuestionChange,
   onSubmit,
+  model,
+  models,
+  provider,
+  onModelChange,
 }: Readonly<QueryComposerProps>) {
   const canSubmit = question.trim().length >= 3 && !isPending;
 
@@ -70,6 +78,7 @@ export function QueryComposer({
           <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
             <p id="query-guidance" className="text-xs text-muted-foreground">Enter to run · Shift + Enter for a new line</p>
             <div className="flex items-center gap-2">
+              {models.length > 1 ? <label className="text-xs text-muted-foreground">Model<select value={model} onChange={(event) => onModelChange(event.target.value)} disabled={isPending} className="ml-2 rounded-md border bg-background px-2 py-1 text-foreground"><option value={model}>{model}</option>{models.filter((item) => item !== model).map((item) => <option key={item} value={item}>{item}</option>)}</select></label> : <span className="text-xs text-muted-foreground">{provider}: {model}</span>}
               {question ? (
                 <Button type="button" variant="ghost" size="sm" onClick={() => onQuestionChange("")} disabled={isPending}>
                   <X aria-hidden="true" />Clear
